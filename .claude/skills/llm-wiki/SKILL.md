@@ -1,7 +1,7 @@
 ---
 name: llm-wiki
 description: "Karpathy's LLM Wiki: build/query interlinked markdown KB."
-version: 2.1.0
+version: 2.2.0
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -28,7 +28,8 @@ summarizes, cross-references, files, and maintains consistency.
 
 Use this skill when the user:
 - Asks to create, build, or start a wiki or knowledge base
-- Asks to ingest, add, or process a source into their wiki
+- Asks to ingest, add, or process a source into their wiki — including
+  non-Markdown documents (PDF, PPTX, DOCX, XLSX, HTML) and images
 - Asks a question and an existing wiki is present at the configured path
 - Asks to lint, audit, or health-check their wiki
 - References their wiki, knowledge base, or "notes" in a research context
@@ -57,7 +58,10 @@ wiki/
 │   ├── articles/       # Web articles, clippings
 │   ├── papers/         # PDFs, arxiv papers
 │   ├── transcripts/    # Meeting notes, interviews
-│   └── assets/         # Images, diagrams referenced by sources
+│   └── assets/         # Images extracted from sources, one subdir per source:
+│                       #   assets/<source-slug>/img-1.png, img-2.png, ...
+├── .llm-wiki/          # Agent-internal state (not a wiki layer)
+│   └── image-caption-cache.json  # SHA-256 → caption, dedups vision work
 ├── entities/           # Layer 2: Entity pages (people, orgs, products, models)
 ├── concepts/           # Layer 2: Concept/topic pages
 ├── comparisons/        # Layer 2: Side-by-side analyses
@@ -155,10 +159,18 @@ Raw sources ALSO get a small frontmatter block so re-ingests can detect drift:
 ```yaml
 ---
 source_url: https://example.com/article   # original URL, if applicable
+source_file: raw/papers/slug.pdf           # original binary, for converted docs
+converted_from: pdf                        # set when the body was machine-converted to MD
+media_dir: raw/assets/slug                 # extracted-image subdir, if any
 ingested: YYYY-MM-DD
 sha256: <hex digest of the raw content below the frontmatter>
 ---
 ```
+
+`source_file` / `converted_from` / `media_dir` appear only on sources that
+went through **Multimodal Ingest** (a converted PDF/PPTX/DOCX/image). For
+converted docs the `sha256` is computed over the *converted Markdown* body,
+since that's the artifact the wiki actually reads.
 
 The `sha256:` lets a future re-ingest of the same URL skip processing when content is unchanged,
 and flag drift when it has changed. Compute over the body only (everything after the closing
@@ -260,8 +272,10 @@ When the user provides a source (URL, file, paste), integrate it into the wiki:
 
 ① **Capture the raw source:**
    - URL → use `web_extract` to get markdown, save to `raw/articles/`
-   - PDF → use `web_extract` (handles PDFs), save to `raw/papers/`
    - Pasted text → save to appropriate `raw/` subdirectory
+   - **Local document file (PDF, PPTX, DOCX, XLSX, HTML) or image** →
+     run the **Multimodal Ingest** procedure below to convert it to
+     Markdown and caption any embedded images, *then continue from ②*.
    - Name the file descriptively: `raw/articles/karpathy-llm-wiki-2026.md`
    - **Add raw frontmatter** (`source_url`, `ingested`, `sha256` of the body).
      On re-ingest of the same URL: recompute the sha256, compare to the stored value —
@@ -299,6 +313,120 @@ When the user provides a source (URL, file, paste), integrate it into the wiki:
 
 A single source can trigger updates across 5-15 wiki pages. This is normal
 and desired — it's the compounding effect.
+
+#### Multimodal Ingest (non-Markdown files & embedded images)
+
+When the source is a local document or image, normalize it to Markdown
+*before* the rest of the Ingest flow runs. The wiki stays pure Markdown;
+images become **searchable text** via factual captions and stay
+**visible** because the originals are kept on disk and referenced inline.
+
+This needs no app and no external vision API — **you (the agent) are
+multimodal**: you read each image directly and write its caption. A
+SHA-256 cache means any given image is described exactly once, ever.
+
+**Prerequisites (check once, install if missing).** Probe with
+`execute_code`/Bash; degrade gracefully and tell the user what to install:
+
+| Capability | Primary tool | Check | Fallbacks |
+|---|---|---|---|
+| Any doc → Markdown | `markitdown` | `markitdown --version` | `pandoc` (docx/odt/html), `pdftotext` (poppler) |
+| Images out of a PDF | `pdfimages` (poppler) | `pdfimages -v` | render pages: `pdftoppm -png` |
+| Images out of PPTX/DOCX | `unzip` | `unzip -v` | any zip tool |
+| SHA-256 + cache | bundled `scripts/caption_cache.py` | `python3 --version` | — |
+
+`markitdown` (`pip install markitdown`) is the one tool that covers
+PDF/PPTX/DOCX/XLSX/HTML/standalone-image text in a single command —
+prefer it; reach for the fallbacks only when it's unavailable.
+
+**Procedure:**
+
+**① Slugify** the source filename (lowercase, hyphens) → `<slug>`. This
+names both the raw file and its media subdir.
+
+**② Convert text → Markdown** and save to the right `raw/` subdir
+(`papers/` for PDFs, `articles/` otherwise) as `<slug>.md`:
+
+```bash
+markitdown "input.pdf" > "$WIKI/raw/papers/<slug>.md"
+# fallbacks: pandoc "input.docx" -t gfm -o ...   |   pdftotext "input.pdf" - > ...
+```
+
+Keep the **original binary** alongside the `.md` (e.g.
+`raw/papers/<slug>.pdf`) for provenance — `raw/` is immutable, so this is
+the permanent record. Add raw frontmatter (`source_file`, `converted_from`,
+`ingested`, `sha256` of the converted body) per SCHEMA.md.
+
+**③ Extract embedded images** to `raw/assets/<slug>/`:
+
+```bash
+mkdir -p "$WIKI/raw/assets/<slug>"
+# PDF — `-p` stamps the page number into the filename (used in ⑤):
+pdfimages -png -p "input.pdf" "$WIKI/raw/assets/<slug>/img"
+# PPTX / DOCX — media is already PNG/JPEG inside the zip:
+unzip -o -j "input.pptx" "ppt/media/*"  -d "$WIKI/raw/assets/<slug>/"
+unzip -o -j "input.docx" "word/media/*" -d "$WIKI/raw/assets/<slug>/"
+```
+
+For a **standalone image** source, copy it into `raw/assets/<slug>/` and
+treat it as a one-image document (skip step ②).
+
+**Filter noise:** delete extracted files under ~3 KB or obviously
+icon-sized before captioning — logos and bullet decorations aren't worth
+a caption. (Cheap heuristic; no image library needed.)
+
+**④ Caption each image — cache first, then look.** For every image file:
+
+```bash
+S="$WIKI/.claude/skills/llm-wiki/scripts/caption_cache.py"  # adjust to skill path
+python3 "$S" get "$WIKI" "raw/assets/<slug>/img-1.png"
+```
+
+- `HIT\t<caption>` → reuse that caption, **do not** re-describe the image.
+- `MISS\t<sha>` → **read the image yourself** (multimodal `read_file`) and
+  write a caption using this exact prompt, then store it:
+
+  > Describe this image factually for a knowledge-base index. Include any
+  > visible text verbatim, chart axes and values, diagram structure
+  > (boxes/arrows/labels), and key visual elements. Do NOT speculate or
+  > editorialize. 2 to 4 sentences. Output plain text only — no markdown,
+  > no preamble.
+
+  ```bash
+  python3 "$S" put "$WIKI" "<sha>" "<your-model-id>" "image/png" "the caption text"
+  ```
+
+  Captions must be **single-line plain text** (the cache and the alt-text
+  injection both assume no newlines / no `]`). If a caption call fails,
+  keep the image but inject it with empty alt — still visible, just not
+  searchable. One failed image must not abort the batch.
+
+**⑤ Inject captions into the converted Markdown** so the downstream
+analysis (step ④ of Ingest) places images in context and the captions
+flow through search as ordinary text. Append a section to `<slug>.md`:
+
+```markdown
+## Embedded Images
+
+**[Page 3]** ![<caption for img-1>](raw/assets/<slug>/img-1.png)
+
+![<caption for img-2>](raw/assets/<slug>/img-2.png)
+```
+
+Use a path that resolves from the wiki root; Obsidian users can set the
+attachment folder to `raw/assets/` so these render. Include the `[Page N]`
+prefix only when extraction preserved it (PDF via `-p`).
+
+**Then resume the normal Ingest flow at ②** (discuss takeaways) — the rest
+is unchanged: the converted Markdown, captions included, is just text. The
+LLM building wiki pages can now cite and embed the images by their
+semantic content.
+
+> **Cost note:** captioning is the expensive step. The SHA cache makes
+> repeats free, but a brand-new 50-image deck is 50 image reads. For large
+> batches, confirm scope with the user first. If you later need fully
+> unattended batch captioning, a script can call a vision API and write to
+> this same cache file — the format is shared.
 
 ### 2. Query
 
@@ -355,6 +483,11 @@ wiki = "<WIKI_PATH>"
    changed. Not a hard error, but worth reporting.
 
 ⑨ **Page size:** Flag pages over 200 lines — candidates for splitting.
+
+⑨a **Media integrity:** For each `![caption](raw/assets/...)` reference,
+   confirm the file exists on disk and the alt text is non-empty (an empty
+   caption means a captioning failure that was never retried). Flag extracted
+   images in `raw/assets/` referenced by no page (orphaned media).
 
 ⑩ **Tag audit:** List all tags in use, flag any not in the SCHEMA.md taxonomy.
 
@@ -477,6 +610,12 @@ vault in Obsidian on your laptop/phone — changes appear within seconds.
 ## Pitfalls
 
 - **Never modify files in `raw/`** — sources are immutable. Corrections go in wiki pages.
+  This includes converted Markdown and extracted images: written once at ingest, never edited.
+- **Caption from the cache first** — always run `caption_cache.py get` before describing an
+  image. Re-captioning a cached image wastes a multimodal read and risks an inconsistent
+  caption for identical bytes. Store every fresh caption with `put`.
+- **Don't let one bad image abort a batch** — a failed/timed-out caption keeps the image
+  (empty alt) and ingest continues. Lint check ⑨a surfaces the empties for a later retry.
 - **Always orient first** — read SCHEMA + index + recent log before any operation in a new session.
   Skipping this causes duplicates and missed cross-references.
 - **Always update index.md and log.md** — skipping this makes the wiki degrade. These are the

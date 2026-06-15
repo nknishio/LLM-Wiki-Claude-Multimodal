@@ -1,0 +1,38 @@
+{
+  "56fcd734ba64a02d39e059612ec853495926de894c0883bcb6194c019a9856e1": {
+    "caption": "範例：台灣電子發票證明聯，表頭「營業人企業識別標章」，發票號碼 UZ-17690872，期別 104年03-04月，時間 2015-04-17 13:03:00，隨機碼 0122，賣方 012345678，總計 25。底部一條一維 (Code 39) 條碼，編碼為 *10404U2176908720122*；標註指出三個欄位：發票期別 (10404)、發票字軌號碼 (UZ17690872)、4位隨機碼 (0122)。",
+    "mimeType": "image/png",
+    "model": "claude-opus-4-8",
+    "capturedAt": "2026-06-15T06:08:31.279276+00:00"
+  },
+  "40185a9d831f9ebf3130114469d150c66f8e79bf95df570b2395aab3d8c92d21": {
+    "caption": "範例：電子發票證明聯 AB-11223344，期別 102年05-06月，時間 2013-05-23 11:22:33，隨機碼 9999，總計 340，賣方 01234567，含一條一維條碼與左右兩個二維 QR Code。下方為左側 QR 編碼字串 AB1122334410205239999000001440000015400000000001234567ydXZt4LAN1UHN/j1juVcRA== 與商品明細片段 口罩:1:210:牛奶:1:25 與 3:3:0:乾電池:1:105:，示範 QR Code 載荷格式。",
+    "mimeType": "image/png",
+    "model": "claude-opus-4-8",
+    "capturedAt": "2026-06-15T06:08:31.280889+00:00"
+  },
+  "05006b1bd5189bdff5854bc3c074b5d2e6296ba70752b3fc888636b4490e433e": {
+    "caption": "範例：電子發票證明聯 AB-11223344 (102年05-06月，2013-05-23 11:22:33，總計 340)，含一條一維條碼與兩個 QR Code。編碼載荷 AB1122334410205239999000001440000015400000000001234567ydXZt4LAN1UHN/j1juVcRA== 與商品片段 口罩:1:210:牛奶:1:25 及 3:3:1:乾電池:1:105:；此為與 3:3:0 範例在商品數量欄位不同的變體。",
+    "mimeType": "image/png",
+    "model": "claude-opus-4-8",
+    "capturedAt": "2026-06-15T06:08:31.281263+00:00"
+  },
+  "d7a90582b91d18f66a5f58661c25f7881abd9b82762c7516378b6f692f8958d0": {
+    "caption": "範例：電子發票證明聯 AB-11223344 (102年05-06月)，含一條一維條碼與兩個 QR Code。左側 QR 載荷 AB1122334410205239999000001440000015400000000001234567ydXZt4LAN1UHN/j1juVcRA== 含片段 3:3:2:5Lm+6Zu75qGg，右側 QR 編碼文字 **OjE6MTA1OuWPo+e9qToxOjlxMDrniZvlpbY6MToyNQ==，示範以 Base64 編碼 (非明文) 之商品明細變體。",
+    "mimeType": "image/png",
+    "model": "claude-opus-4-8",
+    "capturedAt": "2026-06-15T06:08:31.281577+00:00"
+  },
+  "ed7174544e0ca2aa0c3a3b643e243a66987b79cde4932e505fb1b7b7df5c8377": {
+    "caption": "流程圖 (財政部 E-Invoice Platform)：產生 AES 加密金鑰之三步驟。步驟1 營業人於財政部電子發票整合服務平台「連線平台設定加密密碼 (pwd1)」；步驟2「操作金鑰產生工具」以 AES金鑰產生工具 將 pwd1 產出 Key1 (Hex Code)；步驟3「以 Key1 做 AES 加密演算法」。方塊由左至右以箭頭連接，標註 pwd1 與 Key1(Hex Code)。",
+    "mimeType": "image/png",
+    "model": "claude-opus-4-8",
+    "capturedAt": "2026-06-15T06:08:31.281870+00:00"
+  },
+  "3aaf336d7d50d0b80568ed71217cf2f436dc18c13fc3fe7572070bcdc0d2566d": {
+    "caption": "截圖：線上條碼解碼工具「Online Barcode Decoder」(Barcode Reader & Decoder Software) 網頁，用於驗證發票條碼。介面顯示 Show result as Image、上傳檔案限制 2MB (Jpg, gif, png, bmp, tiff)、Barcode Reader Settings 分頁 Linear/QRCode/DataMatrix/PDF417/AztecCode、符號類型勾選含 Code-39 與 Code 93、Quantity 1、Speed Normal，以及 Decode image 按鈕。",
+    "mimeType": "image/png",
+    "model": "claude-opus-4-8",
+    "capturedAt": "2026-06-15T06:08:31.282179+00:00"
+  }
+}

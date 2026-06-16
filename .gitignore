@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.DS_Store
+# uv / build artifacts
+.venv/
+dist/
+*.egg-info/

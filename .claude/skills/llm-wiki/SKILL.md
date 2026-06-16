@@ -325,19 +325,30 @@ This needs no app and no external vision API — **you (the agent) are
 multimodal**: you read each image directly and write its caption. A
 SHA-256 cache means any given image is described exactly once, ever.
 
-**Prerequisites (check once, install if missing).** Probe with
-`execute_code`/Bash; degrade gracefully and tell the user what to install:
+**Prerequisites — the bundled `llm-wiki` CLI.** All conversion, image
+extraction, and caption caching go through one installed command. It is
+pure Python (PyMuPDF / python-pptx / python-docx / pandas / markdownify) —
+**no markitdown, poppler, pandoc, or unzip** — so it installs identically
+on macOS, Windows, and Linux. Check once, install if missing:
 
-| Capability | Primary tool | Check | Fallbacks |
-|---|---|---|---|
-| Any doc → Markdown | `markitdown` | `markitdown --version` | `pandoc` (docx/odt/html), `pdftotext` (poppler) |
-| Images out of a PDF | `pdfimages` (poppler) | `pdfimages -v` | render pages: `pdftoppm -png` |
-| Images out of PPTX/DOCX | `unzip` | `unzip -v` | any zip tool |
-| SHA-256 + cache | bundled `scripts/caption_cache.py` | `python3 --version` | — |
+```bash
+llm-wiki doctor          # lists every dependency; exit 0 = ready
+# if not found, install from the skill folder (bootstraps uv):
+#   ./install.sh         (macOS / Linux)
+#   .\install.ps1        (Windows / PowerShell)
+```
 
-`markitdown` (`pip install markitdown`) is the one tool that covers
-PDF/PPTX/DOCX/XLSX/HTML/standalone-image text in a single command —
-prefer it; reach for the fallbacks only when it's unavailable.
+| Capability | Command | Handles |
+|---|---|---|
+| Any doc → Markdown | `llm-wiki convert <in> --out <md>` | PDF, PPTX, DOCX, XLSX, CSV, HTML |
+| Embedded images out | `llm-wiki extract-images <in> --out-dir <dir>` | PDF, PPTX, DOCX, XLSX, standalone image |
+| SHA-256 caption cache | `llm-wiki caption get/put …` | dedups vision work |
+| Body / file hash, slug | `llm-wiki hash-text`, `llm-wiki hash`, `llm-wiki slug` | frontmatter + naming |
+
+If the CLI is genuinely unavailable and can't be installed, degrade
+gracefully: tell the user to run the installer, and fall back to the
+zero-dependency `scripts/caption_cache.py` for caching while you read docs
+directly. Don't reach for markitdown/poppler — they're intentionally gone.
 
 **Procedure:**
 
@@ -348,8 +359,8 @@ names both the raw file and its media subdir.
 (`papers/` for PDFs, `articles/` otherwise) as `<slug>.md`:
 
 ```bash
-markitdown "input.pdf" > "$WIKI/raw/papers/<slug>.md"
-# fallbacks: pandoc "input.docx" -t gfm -o ...   |   pdftotext "input.pdf" - > ...
+llm-wiki convert "input.pdf" --out "$WIKI/raw/papers/<slug>.md"
+# one command for PDF/PPTX/DOCX/XLSX/CSV/HTML — no markitdown/pandoc/poppler
 ```
 
 Keep the **original binary** alongside the `.md` (e.g.
@@ -360,26 +371,26 @@ the permanent record. Add raw frontmatter (`source_file`, `converted_from`,
 **③ Extract embedded images** to `raw/assets/<slug>/`:
 
 ```bash
-mkdir -p "$WIKI/raw/assets/<slug>"
-# PDF — `-p` stamps the page number into the filename (used in ⑤):
-pdfimages -png -p "input.pdf" "$WIKI/raw/assets/<slug>/img"
-# PPTX / DOCX — media is already PNG/JPEG inside the zip:
-unzip -o -j "input.pptx" "ppt/media/*"  -d "$WIKI/raw/assets/<slug>/"
-unzip -o -j "input.docx" "word/media/*" -d "$WIKI/raw/assets/<slug>/"
+# One command for every container. PDF image filenames carry the page
+# number (img-p<N>-<id>.png), used in ⑤. Office media keeps its original name.
+llm-wiki extract-images "input.pdf" --out-dir "$WIKI/raw/assets/<slug>"
+# also works for .pptx / .docx / .xlsx and standalone images
 ```
 
-For a **standalone image** source, copy it into `raw/assets/<slug>/` and
-treat it as a one-image document (skip step ②).
+For a **standalone image** source, point `extract-images` at it (it copies
+the file into the assets dir) and treat it as a one-image document (skip
+step ②).
 
-**Filter noise:** delete extracted files under ~3 KB or obviously
-icon-sized before captioning — logos and bullet decorations aren't worth
-a caption. (Cheap heuristic; no image library needed.)
+**Noise filter is built in:** `extract-images` drops files under ~3 KB
+(logos, bullet decorations) automatically. Override with `--min-bytes 0`
+to keep everything.
 
 **④ Caption each image — cache first, then look.** For every image file:
 
 ```bash
-S="$WIKI/.claude/skills/llm-wiki/scripts/caption_cache.py"  # adjust to skill path
-python3 "$S" get "$WIKI" "raw/assets/<slug>/img-1.png"
+llm-wiki caption get "$WIKI" "raw/assets/<slug>/img-1.png"
+# no CLI installed? same protocol via the bundled zero-dep script:
+#   python3 scripts/caption_cache.py get "$WIKI" "raw/assets/<slug>/img-1.png"
 ```
 
 - `HIT\t<caption>` → reuse that caption, **do not** re-describe the image.
@@ -393,7 +404,8 @@ python3 "$S" get "$WIKI" "raw/assets/<slug>/img-1.png"
   > no preamble.
 
   ```bash
-  python3 "$S" put "$WIKI" "<sha>" "<your-model-id>" "image/png" "the caption text"
+  llm-wiki caption put "$WIKI" "<sha>" "<your-model-id>" "image/png" "the caption text"
+  # or: python3 scripts/caption_cache.py put "$WIKI" "<sha>" ... "the caption text"
   ```
 
   Captions must be **single-line plain text** (the cache and the alt-text
